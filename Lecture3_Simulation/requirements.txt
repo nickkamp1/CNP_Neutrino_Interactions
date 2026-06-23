@@ -1,0 +1,32 @@
+# Lecture 3 — Colab environment.
+#
+# IMPORTANT: pin these to versions you have actually tested in Colab the week
+# of the lecture. Colab's base image drifts and these compiled packages are the
+# fragile part. Versions below are placeholders — run `pip freeze` after a
+# known-good install and paste the exact versions here.
+#
+# --- Light stack: expected to install live in Colab (CPU) ---
+numpy
+scipy
+matplotlib
+pandas
+pyarrow            # parquet I/O for Prometheus output
+awkward            # Prometheus event arrays
+siren              # injection + weights  (a.k.a. the LeptonInjector successor)
+proposal           # charged-lepton energy loss / decay lengths
+
+# --- Heavier; test carefully, may need the parametric photon path ---
+# prometheus_icecube   # full pipeline; use the fennel parametric photon yield on CPU
+# fennel               # parametric Cherenkov light yield (avoids GPU PPC)
+
+# --- Flux: NO separate package needed ---
+# SIREN ships atmospheric flux tables (surface AND at-detector, the latter with
+# nuSQuIDS oscillation already folded in) on Zenodo record 20129082. make_cache.py
+# extracts a small atmospheric .npz from it; the notebook reads numpy only. This
+# replaces daemonflux / nuflux / nuSQuIDS entirely.
+
+# --- Discuss-only in the lecture; do NOT try to install live in Colab ---
+# GENIE      -> show outputs only
+# GEANT4     -> show outputs only
+# Tauola     -> tau decays handled inside Prometheus/PROPOSAL for this demo
+# pythia8    -> optional hadronization demo, heavy
