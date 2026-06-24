@@ -134,6 +134,38 @@ def astro_powerlaw(energy_gev, phi0=1.8e-18, gamma=2.5, e0=1.0e5):
 
 
 # ---------------------------------------------------------------------------
+# Tau propagation / decay  (section 3)
+# ---------------------------------------------------------------------------
+TAU_MASS_GEV = 1.77686      # PDG tau mass
+TAU_CTAU_M = 8.703e-5       # c * lifetime, metres (~87 microns)
+
+
+def tau_mean_decay_length_m(e_tau_gev):
+    """Lab-frame mean tau decay length L = (E/m) * c*tau, in metres
+    (~50 m per PeV)."""
+    e_tau_gev = np.asarray(e_tau_gev, float)
+    return (e_tau_gev / TAU_MASS_GEV) * TAU_CTAU_M
+
+
+def sample_tau_decay_length_m(e_tau_gev, size=None, rng=None):
+    """Sample lab-frame tau decay lengths (exponential, mean = gamma*c*tau).
+
+    Exact decay kinematics. PROPOSAL additionally folds in stochastic energy
+    loss *before* the decay, which erodes this simple scaling at the highest
+    energies (the tau loses energy, so it doesn't fly as far as gamma*c*tau).
+    """
+    rng = rng or np.random.default_rng()
+    return rng.exponential(tau_mean_decay_length_m(e_tau_gev), size=size)
+
+
+def double_bang_efficiency(e_tau_gev, d_min=10.0, d_max=1000.0):
+    """Fraction of taus whose decay length lands in a resolvable window
+    [d_min, d_max] m, from the exponential CDF: e^{-d_min/L} - e^{-d_max/L}."""
+    lam = tau_mean_decay_length_m(e_tau_gev)
+    return np.exp(-d_min / lam) - np.exp(-d_max / lam)
+
+
+# ---------------------------------------------------------------------------
 # Event displays  (the payoff at the end of the lecture)
 # ---------------------------------------------------------------------------
 def plot_event_display(hits, ax=None, title=None, geo=None, max_dots=4000):

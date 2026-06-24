@@ -7,9 +7,31 @@ Students walk the full telescope pipeline and generate / display $\nu_\tau$ even
 FLUX → INTERACTION → PROPAGATION → LIGHT → DETECTOR → WEIGHTS
 ```
 
-**[➡ Open `neutrino_sim_lecture3.ipynb` in Colab]** — replace `USER/REPO` below with your repo,
-then use this badge link:
-`https://colab.research.google.com/github/USER/REPO/blob/main/Lecture3_Simulation/neutrino_sim_lecture3.ipynb`
+It's split into **three notebooks**, one per tool, runnable independently:
+
+| # | Notebook | Stages | Open in Colab |
+|---|---|---|---|
+| a | `1_SIREN_flux_injection_weights.ipynb` | flux · injection · weights | `colab.research.google.com/github/USER/REPO/blob/main/Lecture3_Simulation/1_SIREN_flux_injection_weights.ipynb` |
+| b | `2_PROPOSAL_tau_propagation.ipynb` | tau propagation / decay | `…/2_PROPOSAL_tau_propagation.ipynb` |
+| c | `3_Prometheus_light_and_event_display.ipynb` | light · detector · displays | `…/3_Prometheus_light_and_event_display.ipynb` |
+
+Replace `USER/REPO` with your repository in both the badge links **and** the `REPO_URL` in each
+notebook's Setup cell (see next section).
+
+## Colab can't see `src/` — the clone fix
+
+When you open a notebook through Colab's **GitHub browser**, Colab downloads *only that one `.ipynb`*
+into a fresh VM — it does **not** clone the repo, so `src/helpers.py` and `data/` are absent and
+`import helpers` fails. Each notebook's first **Setup** cell fixes this: on Colab it `git clone`s the
+repo into the runtime and adds `<repo>/Lecture3_Simulation/src` to `sys.path`. You must:
+
+1. Set `REPO_URL` in the Setup cell to your repository (and make the repo public, or clone with a token).
+2. **Commit the small cache files** (`data/*.npz`, `data/*.parquet`) so the clone brings them. They're
+   small; the 1.2 GB SIREN flux archive is *not* committed (`make_cache.py` extracts a small `.npz`).
+   Alternatively, host them and set `CACHE_BASE_URL` in `helpers.py` — `helpers.cached_path` downloads
+   on demand. If neither is present, the notebooks fall back to labelled **synthetic** data.
+
+Running locally needs none of this — the Setup cell finds `./src` automatically.
 
 ## Design philosophy: it must not break live
 
@@ -65,8 +87,9 @@ Pin the git `<tag>`/commit so the wheel is reproducible, and rebuild it if Colab
 
 ## Files
 
-- `neutrino_sim_lecture3.ipynb` — the lecture notebook (22 cells, pipeline-ordered, with 🔧 exercises).
-- `src/helpers.py` — cache loading, the 3-D event display, and the synthetic double-bang placeholder.
+- `1_SIREN_…`, `2_PROPOSAL_…`, `3_Prometheus_…` `.ipynb` — the three lecture notebooks (each starts
+  with a self-contained Setup cell and 🔧 exercises; runnable independently).
+- `src/helpers.py` — flux/tau/cache helpers, the 3-D event display, and synthetic fallbacks.
 - `make_cache.py` — **run once** in a full-toolchain environment to build the real cached data files.
 - `requirements.txt` — pin these to versions you tested the week of the lecture.
 
@@ -74,17 +97,19 @@ Pin the git `<tag>`/commit so the wheel is reproducible, and rebuild it if Colab
 
 1. **Build the cache.** On a machine with the real toolchain: `python make_cache.py`. Fill in the
    `TODO`/`NotImplementedError` bodies with your standard nuSQuIDS / SIREN / Prometheus configs.
-2. **Host the cache.** Upload `data/*.{npz,parquet}` to a GitHub release (or bucket/Zenodo) and set
-   `CACHE_BASE_URL` in `src/helpers.py` (or the `NUSIM_CACHE_URL` env var).
-3. **Pin versions.** Do a clean Colab install, `pip freeze`, and paste exact versions into `requirements.txt`.
-4. **Dry run the morning of.** Colab base images drift; run the whole notebook once, top to bottom.
+2. **Ship the cache.** Either commit `data/*.{npz,parquet}` so the Colab clone brings them, or upload
+   them to a GitHub release (or bucket/Zenodo) and set `CACHE_BASE_URL` in `src/helpers.py`
+   (or the `NUSIM_CACHE_URL` env var).
+3. **Set `REPO_URL`** in each notebook's Setup cell to your repo.
+4. **Pin versions.** Do a clean Colab install, `pip freeze`, and paste exact versions into `requirements.txt`.
+5. **Dry run the morning of.** Colab base images drift; run each notebook once, top to bottom.
 
-Until step 1 is done the notebook still runs end-to-end on **synthetic placeholder data** (clearly
+Until step 1 is done the notebooks still run end-to-end on **synthetic placeholder data** (clearly
 labelled), so you can develop and demo the flow immediately.
 
 ## Local run
 
 ```bash
 pip install -r requirements.txt
-jupyter lab neutrino_sim_lecture3.ipynb   # helpers auto-found via ./src
+jupyter lab 1_SIREN_flux_injection_weights.ipynb   # helpers auto-found via ./src
 ```
