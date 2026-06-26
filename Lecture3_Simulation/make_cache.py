@@ -157,10 +157,47 @@ def build_siren_events(n_events=int(2e4), e_min=1e4, e_max=1e7, experiment="IceC
           "-> convert to data/siren_nutau_injection.parquet")
 
 
+def build_tau_decays(n=20000, e_min=1e4, e_max=1e7, seed=0):
+    """Propagate taus with PROPOSAL and record decay lengths -> data/tau_decays_proposal.parquet.
+
+    This is the REAL propagation (continuous + stochastic energy loss before the
+    tau decays), so the section-3 distribution/efficiency are physical rather than
+    a pure-exponential approximation. PROPOSAL units: energy MeV, length cm.
+    """
+    import numpy as np  # noqa: PLC0415
+    import pandas as pd  # noqa: PLC0415
+    import proposal as pp  # noqa: PLC0415
+
+    print(f"[tau] propagating {n} taus with PROPOSAL ...")
+    rng = np.random.default_rng(seed)
+    # log-uniform tau energies spanning the range (reweight later if you want a spectrum)
+    e_gev = 10 ** rng.uniform(np.log10(e_min), np.log10(e_max), n)
+
+    prop = pp.Propagator(
+        particle_def=pp.particle.TauMinusDef(),
+        path_to_config_file="config_ice.json",   # <-- your PROPOSAL ice config
+    )
+
+    decay_len_m = np.empty(n)
+    for i, E in enumerate(e_gev):
+        state = pp.particle.ParticleState()
+        state.position = pp.Cartesian3D(0, 0, 0)      # cm
+        state.direction = pp.Cartesian3D(0, 0, 1)
+        state.energy = E * 1e3                         # GeV -> MeV
+        track = prop.propagate(state, max_distance=1e6)  # cm
+        decay_len_m[i] = track.final_state().propagated_distance / 100.0  # cm -> m
+
+    df = pd.DataFrame({"energy_gev": e_gev, "decay_length_m": decay_len_m})
+    dest = os.path.join(DATA, "tau_decays_proposal.parquet")
+    df.to_parquet(dest)
+    print(f"[tau] wrote {dest}")
+
+
 BUILDERS = {
     "flux": build_flux_subset,
     "events": build_prometheus_events,
     "siren": build_siren_events,
+    "tau": build_tau_decays,
 }
 
 
