@@ -106,6 +106,16 @@ routes for the git version:
 one-off `pip wheel`; pin the git tag/commit and rebuild if Colab's Python changes.) The Setup cell
 prints `siren importable: True/False` so you can see immediately whether the install took.
 
+### numpy ABI conflict (`numpy.dtype size changed ... Expected 96 ... got 88`)
+
+Installing the SIREN wheel can pull a different **numpy** (e.g. downgrade Colab's numpy 2.x to 1.x),
+leaving numpy inconsistent with the pre-compiled `awkward`/`pyarrow`. It then crashes — typically at
+`ak.from_parquet` — with `numpy.dtype size changed, Expected 96 ... got 88` (96 = numpy 2.x ABI,
+88 = 1.x). The Setup cell guards against this: it pins `NUMPY_PIN` (default `1.26.4`, matching SIREN's
+wheel) and **restarts the kernel once** so every compiled package shares one ABI; the cached re-run
+skips straight through. If you hit it manually: `!pip install -q --force-reinstall "numpy<2"`, then
+**Runtime → Restart**. Set `NUMPY_PIN` to whatever numpy your wheel was built against.
+
 ## Files
 
 - `1_SIREN_flux_injection_weights.ipynb` — notebook 1 (flux · injection · weights; SIREN, fully live).
