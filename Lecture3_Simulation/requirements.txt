@@ -10,20 +10,34 @@ numpy
 scipy
 matplotlib
 pandas
-pyarrow            # parquet I/O for Prometheus output
-awkward            # Prometheus event arrays
+pyarrow            # parquet I/O for SIREN + Prometheus event output
+awkward            # SIREN + Prometheus event arrays
 siren              # injection + weights  (a.k.a. the LeptonInjector successor)
-proposal           # charged-lepton energy loss / decay lengths
 
-# --- Heavier; test carefully, may need the parametric photon path ---
-# prometheus_icecube   # full pipeline; use the fennel parametric photon yield on CPU
-# fennel               # parametric Cherenkov light yield (avoids GPU PPC)
+# --- Notebook 1 (SIREN): runs FULLY LIVE -- no pre-built cache files ---
+# `pip install siren` is a prebuilt wheel (seconds). SIREN then downloads its own
+# detector / cross-section / atmospheric-flux data on demand from Zenodo
+# (record 20129082) via the bundled `siren-download` CLI. Nothing in data/ is
+# needed for notebook 1.
+
+# --- Notebook 2 (PROPOSAL + Prometheus): installed via Prometheus' built-in installer ---
+# proposal and prometheus are NOT pip-installable wheels. Notebook 2's Setup cell runs:
+#     git clone https://github.com/Harvard-Neutrino/prometheus.git
+#     cd prometheus && bash install.sh --with-ppc
+# which compiles + installs PROPOSAL (lepton propagation), LeptonInjector (injection),
+# and (with --with-ppc) the PPC ice photon path. This takes ~10-20 min in Colab.
+# See: https://harvard-neutrino.github.io/prometheus/installation/built-in-installer/
+#
+# The polished event displays in Part 3 read PRE-GENERATED parquet from
+# data/Prometheus_simulation/ and only need pyarrow + awkward (below) -- so they work
+# even if the heavy install is skipped. The live PROPOSAL tau-propagation (Part 1) and the
+# tiny Prometheus smoke-test (Part 2) need the built-in installer to have run.
 
 # --- Flux: NO separate package needed ---
 # SIREN ships atmospheric flux tables (surface AND at-detector, the latter with
-# nuSQuIDS oscillation already folded in) on Zenodo record 20129082. make_cache.py
-# extracts a small atmospheric .npz from it; the notebook reads numpy only. This
-# replaces daemonflux / nuflux / nuSQuIDS entirely.
+# nuSQuIDS oscillation already folded in) on Zenodo record 20129082, fetched live
+# by `siren.utilities.load_flux(...)`. The notebook reads them directly -- no
+# daemonflux / nuflux / nuSQuIDS install, and no pre-extracted .npz cache.
 
 # --- Discuss-only in the lecture; do NOT try to install live in Colab ---
 # GENIE      -> show outputs only

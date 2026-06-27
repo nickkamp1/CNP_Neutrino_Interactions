@@ -7,13 +7,12 @@ Students walk the full telescope pipeline and generate / display $\nu_\tau$ even
 FLUX → INTERACTION → PROPAGATION → LIGHT → DETECTOR → WEIGHTS
 ```
 
-It's split into **three notebooks**, one per tool, runnable independently:
+It's split into **two notebooks**, runnable independently:
 
-| # | Notebook | Stages | Open in Colab |
-|---|---|---|---|
-| a | `1_SIREN_flux_injection_weights.ipynb` | flux · injection · weights | `colab.research.google.com/github/USER/REPO/blob/main/Lecture3_Simulation/1_SIREN_flux_injection_weights.ipynb` |
-| b | `2_PROPOSAL_tau_propagation.ipynb` | tau propagation / decay | `…/2_PROPOSAL_tau_propagation.ipynb` |
-| c | `3_Prometheus_light_and_event_display.ipynb` | light · detector · displays | `…/3_Prometheus_light_and_event_display.ipynb` |
+| # | Notebook | Stages | Tools | Open in Colab |
+|---|---|---|---|---|
+| 1 | `1_SIREN_flux_injection_weights.ipynb` | flux · injection · weights | SIREN | `colab.research.google.com/github/USER/REPO/blob/main/Lecture3_Simulation/1_SIREN_flux_injection_weights.ipynb` |
+| 2 | `2_propagation_and_light.ipynb` | propagation · light · detector · displays | PROPOSAL + Prometheus | `…/2_propagation_and_light.ipynb` |
 
 Replace `USER/REPO` with your repository in both the badge links **and** the `REPO_URL` in each
 notebook's Setup cell (see next section).
@@ -26,13 +25,12 @@ into a fresh VM — it does **not** clone the repo, so `src/helpers.py` and `dat
 repo into the runtime and adds `<repo>/Lecture3_Simulation/src` to `sys.path`. You must:
 
 1. Set `REPO_URL` in the Setup cell to your repository (and make the repo public, or clone with a token).
-2. **Commit the cache files** (`data/*.npz`, `data/*.parquet`) so the clone brings them. They're small;
-   the 1.2 GB SIREN flux archive is *not* committed (`make_cache.py` extracts a small `.npz`).
-   Alternatively, host them and set `CACHE_BASE_URL` in `helpers.py` — `helpers.cached_path` downloads
-   on demand. If a file is missing, the loader **raises a clear error** naming the `make_cache.py`
-   command to run — it never substitutes fake data.
+2. **Notebook 1 (SIREN) needs no committed data** — it `pip install siren` and downloads everything it
+   needs live (see below). Only **notebook 2** relies on the committed pre-generated Prometheus data
+   under `data/Prometheus_simulation/` for its polished event displays.
 
-Running locally needs none of this — the Setup cell finds `./src` automatically.
+Running locally needs none of this — notebook 1 just `pip install siren`; the Setup cell finds `./src`
+automatically when a notebook needs it.
 
 ## Design philosophy: real data only
 
@@ -42,20 +40,32 @@ stand-ins**: a missing cache raises an informative error rather than faking the 
 
 | Stage | How it runs | Cache file (from `make_cache.py`) |
 |---|---|---|
-| Flux (atmo + astro) | numpy on SIREN's tables | `atmo_flux_siren.npz` (`--flux`) |
-| Interaction | live SIREN (if installed) or cache | `siren_nutau_injection.parquet` (`--siren`) |
-| Propagation | real PROPOSAL tau decays | `tau_decays_proposal.parquet` (`--tau`) |
-| Light + detector | cached Prometheus output | `prometheus_nutau_example.parquet` (`--events`) |
-| Weights | numpy, reusing SIREN flux + gen-weights | (uses the flux + injection caches) |
+| Flux (atmo + astro) | live SIREN tables (notebook 1) | — |
+| Interaction | live SIREN injection (notebook 1) | — |
+| Propagation | **live PROPOSAL** tau decays (notebook 2, Part 1) | — |
+| Light + detector | tiny **live** Prometheus smoke-test + **pre-generated** displays | `data/Prometheus_simulation/IceCube_HE/<sig>/Generation_*_photons.parquet` |
+| Weights | numpy, reusing SIREN flux + gen-weights (notebook 1) | — |
 
-The §3 (PROPOSAL) notebook overlays the **naive $\gamma c\tau$** curve only as a *labelled reference*
-against the real PROPOSAL points — to show what the stochastic energy losses do, not as a data stand-in.
+**Notebook 2 (PROPOSAL + Prometheus).** Part 1 runs PROPOSAL **live** (cheap, seconds) to get
+the real tau decay-length distribution, overlaying the **naive $\gamma c\tau$** curve only as a
+*labelled reference* to show what the stochastic energy losses do. Part 2 installs Prometheus via
+its **built-in installer** (which also builds PROPOSAL + LeptonInjector) and runs a *tiny* live
+sim to verify the Colab install, then loads the committed **pre-generated IceCube_HE** parquet for
+the polished event displays (Part 3: cascade / track / double-bang / NuMu).
 
-**Flux:** SIREN ships atmospheric tables (surface **and** at-detector, the latter with nuSQuIDS
-oscillation + Earth absorption already folded in) on Zenodo record `20129082`. `make_cache.py` extracts
-a small `.npz` from that 1.2 GB archive once; the notebook only ever downloads the small file and reads
-numpy — so **`daemonflux`/`nuflux`/`nuSQuIDS` are gone entirely**. Plotting surface vs at-detector (§1b)
-shows what Earth propagation does without running anything.
+The pre-generated parquet is **real Prometheus output** (made with the PPC GPU photon path). Its
+schema is one record per event with `mc_truth.*` and a per-photon `photons.{sensor_pos_x/y/z,
+string_id, sensor_id, t}` field; `src/helpers.load_prometheus_event` reads this directly and
+resolves the faint detector outline from the `.geo` file named in the parquet's
+`config_prometheus` metadata (falling back to the bundled Prometheus `resources/geofiles/`).
+
+**Flux (notebook 1, fully live):** SIREN ships atmospheric tables (surface **and** at-detector, the
+latter with nuSQuIDS oscillation + Earth absorption already folded in) on Zenodo record `20129082`.
+`siren.utilities.load_flux("Atmospheric", tag=...)` downloads and returns them at run time — so
+**`daemonflux`/`nuflux`/`nuSQuIDS` are gone entirely** and there is **no `.npz` cache**. Plotting
+surface (`unosc`) vs at-detector (`osc`) in §1b shows what Earth propagation does without running
+anything. The `siren-download --list` / `--fetch` CLI is demoed in the Setup section so students see
+where the data comes from.
 
 `GENIE`, `GEANT4`, `Tauola`, `pythia8` are **discuss-and-show**, never installed live.
 
@@ -71,8 +81,7 @@ each time. Sessions also time out (~90 min idle).
 | Package | Install on Colab | Notes |
 |---|---|---|
 | `siren` | `pip install siren` (PyPI wheel) — seconds | wheel **lags the git repo**; for git features see below |
-| `proposal` | source-only (no wheel) → compiles (~5–10 min) | not installed live; we read cached PROPOSAL output |
-| `prometheus` | heavy; depends on PROPOSAL | not installed live; we read cached Prometheus output |
+| `proposal` + `prometheus` | Prometheus **built-in installer** (compiles from source, ~10–20 min) | notebook 2's Setup cell runs `git clone …/prometheus && cd prometheus && bash install.sh --with-ppc`, which builds **PROPOSAL + LeptonInjector** (and PPC for ice). See the [built-in installer docs](https://harvard-neutrino.github.io/prometheus/installation/built-in-installer/). The Part 3 event displays read **pre-generated** parquet and need only `pyarrow`/`awkward`, so they work even if this heavy install is skipped. |
 
 ### Installing SIREN so `import siren` works
 
@@ -99,26 +108,28 @@ prints `siren importable: True/False` so you can see immediately whether the ins
 
 ## Files
 
-- `1_SIREN_…`, `2_PROPOSAL_…`, `3_Prometheus_…` `.ipynb` — the three lecture notebooks (each starts
-  with a self-contained Setup cell and 🔧 exercises; runnable independently).
-- `src/helpers.py` — flux/tau/cache loaders (error if a cache is missing) and the 3-D event display.
-- `make_cache.py` — **run once** in a full-toolchain environment to build the real cached data files.
+- `1_SIREN_flux_injection_weights.ipynb` — notebook 1 (flux · injection · weights; SIREN, fully live).
+- `2_propagation_and_light.ipynb` — notebook 2 (propagation · light · detector; PROPOSAL live +
+  Prometheus install/tiny-sim + pre-generated event displays). Each notebook starts with a
+  self-contained Setup cell and ends with ★ discussion questions / exercises; runnable independently.
+- `src/helpers.py` — flux/tau loaders and the Prometheus event-display utilities
+  (`load_prometheus_event`, `plot_event_display`, `read_geo_file`).
+- `data/Prometheus_simulation/IceCube_HE/<sig>/Generation_*_photons.parquet` — committed
+  **pre-generated** Prometheus output used by notebook 2's Part 3 displays.
+- `make_cache.py` — legacy cache builder. The current notebooks no longer depend on it; it is kept
+  only if you want to **regenerate** the Prometheus display parquet (or other caches) yourself.
 - `requirements.txt` — pin these to versions you tested the week of the lecture.
 
 ## Before the lecture (checklist)
 
-1. **Build the cache.** On a machine with the real toolchain: `python make_cache.py` (or per stage:
-   `--flux`, `--siren`, `--tau`, `--events`). Fill in the remaining `TODO` bodies — the SIREN
-   event→table flattening, the PROPOSAL ice config, and the Prometheus config — with your standard setups.
-2. **Ship the cache.** Either commit `data/*.{npz,parquet}` so the Colab clone brings them, or upload
-   them to a GitHub release (or bucket/Zenodo) and set `CACHE_BASE_URL` in `src/helpers.py`
-   (or the `NUSIM_CACHE_URL` env var).
-3. **Set `REPO_URL`** in each notebook's Setup cell to your repo.
-4. **Pin versions.** Do a clean Colab install, `pip freeze`, and paste exact versions into `requirements.txt`.
-5. **Dry run the morning of.** Colab base images drift; run each notebook once, top to bottom.
-
-Until the caches exist, the data cells **raise a clear error** naming the `make_cache.py` command to
-run (markdown, plots-from-formula, and exercises still render) — by design, nothing fake is shown.
+1. **Commit the display data.** The `data/Prometheus_simulation/IceCube_HE/` parquet files must be
+   committed (or hosted + `CACHE_BASE_URL` set) so the Colab clone brings them — notebook 2's Part 3
+   reads them directly.
+2. **Set `REPO_URL`** in each notebook's Setup cell to your repo.
+3. **Pin versions.** Do a clean Colab install, `pip freeze`, and paste exact versions into `requirements.txt`.
+4. **Dry run the morning of.** Colab base images drift; run each notebook once, top to bottom. Budget
+   ~10–20 min for the Prometheus built-in installer in notebook 2 (Part 1 PROPOSAL and the Part 2
+   live smoke-test need it; the Part 3 displays do not).
 
 ## Local run
 
