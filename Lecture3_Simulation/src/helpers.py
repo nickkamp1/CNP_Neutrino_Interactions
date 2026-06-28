@@ -174,6 +174,82 @@ _PDG_LABEL = {
     15: "tau-", -15: "tau+",
 }
 
+# Flavour part of the label, by |PDG| of the initial neutrino.
+_FLAVOR = {12: "nu_e", 14: "nu_mu", 16: "nu_tau"}
+
+
+def class_label(pdg, interaction):
+    """The event class the game checks against.
+
+    Charged-current (``interaction == 1``) keeps the flavour ("nu_e CC", "nu_mu CC",
+    "nu_tau CC"); neutral-current (``interaction == 2``) is a flavour-blind hadronic
+    cascade, labelled simply "NC".
+    """
+    if interaction == 2:
+        return "NC"
+    return f"{_FLAVOR.get(abs(int(pdg)), 'nu')} CC"
+
+
+# Reading a Prometheus parquet pulls every photon of every event into memory, so it
+# is slow (seconds) for the big files. The "guess the event" game samples many events,
+# so we memo-cache the parsed awkward array (and the per-event photon count) per path.
+_ARR_CACHE = {}
+_NPH_CACHE = {}
+
+
+def _load_arr(path):
+    """Parse a Prometheus parquet to an awkward array, memo-cached by path."""
+    import awkward as ak  # noqa: PLC0415
+
+    arr = _ARR_CACHE.get(path)
+    if arr is None:
+        arr = ak.from_parquet(path)
+        _ARR_CACHE[path] = arr
+    return arr
+
+
+def n_photons_array(path):
+    """Return an int array of #detected photons per event (cached)."""
+    import awkward as ak  # noqa: PLC0415
+
+    nph = _NPH_CACHE.get(path)
+    if nph is None:
+        nph = ak.to_numpy(ak.num(_load_arr(path).photons.t))
+        _NPH_CACHE[path] = nph
+    return nph
+
+
+# Folder name (the injected final state) -> the four IceCube_HE signatures. Used to
+# enumerate the dataset for the "guess the event" game.
+SIGNATURE_FOLDERS = ("EMinus", "MuMinus", "TauMinus", "NuMu")
+
+
+def signature_parquet(detector, signature, data_dir=None):
+    """Path to the committed ``Generation_*_photons.parquet`` for one signature."""
+    base = data_dir or os.path.join(DATA_DIR, "Prometheus_simulation")
+    return os.path.join(base, detector, signature,
+                        "Generation_00000-000_photons.parquet")
+
+
+def pick_random_event(detector="IceCube_HE", rng=None, min_photons=1):
+    """Pick a random (path, event_index) with >= ``min_photons`` detected photons.
+
+    Draws a signature folder uniformly, then a random event in it that actually lit
+    up the detector -- the pool the "guess the event" game samples from. Returns
+    ``(path, index)`` suitable for :func:`load_prometheus_event`.
+    """
+    rng = rng or np.random.default_rng()
+    for _ in range(100):  # almost always succeeds first try
+        sig = SIGNATURE_FOLDERS[rng.integers(len(SIGNATURE_FOLDERS))]
+        path = signature_parquet(detector, sig)
+        if not os.path.exists(path):
+            continue
+        nph = n_photons_array(path)
+        ok = np.flatnonzero(nph >= min_photons)
+        if ok.size:
+            return path, int(rng.choice(ok))
+    raise RuntimeError(f"No event with >={min_photons} photons under {detector}.")
+
 
 def read_geo_file(geo_path):
     """Parse a Prometheus detector `.geo` file into an (N, 3) array of module xyz.
@@ -269,9 +345,9 @@ def load_prometheus_event(path, event="brightest", geo=True):
     import awkward as ak  # noqa: PLC0415
     import pyarrow.parquet as pq  # noqa: PLC0415
 
-    arr = ak.from_parquet(path)
+    arr = _load_arr(path)
 
-    nph = ak.to_numpy(ak.num(arr.photons.t))
+    nph = n_photons_array(path)
     if event == "brightest":
         idx = int(np.argmax(nph))
     else:
@@ -323,6 +399,7 @@ def load_prometheus_event(path, event="brightest", geo=True):
 
     # MC truth summary
     pdg = int(rec.mc_truth.initial_state_type)
+    interaction = int(rec.mc_truth.interaction)   # 1 = CC, 2 = NC (LeptonInjector code)
     info = {
         "event_index": idx,
         "n_photons": int(nph[idx]),
@@ -330,7 +407,23 @@ def load_prometheus_event(path, event="brightest", geo=True):
         "initial_state_type": pdg,
         "initial_state_label": _PDG_LABEL.get(pdg, str(pdg)),
         "initial_state_energy_gev": float(rec.mc_truth.initial_state_energy),
-        "interaction": int(rec.mc_truth.interaction),
+        "interaction": interaction,
+        # human label the "guess the event" game checks against:
+        #   nu_tau CC / nu_mu CC / nu_e CC  vs.  NC (any flavour, hadronic cascade)
+        "class_label": class_label(pdg, interaction),
+        "bjorken_y": float(rec.mc_truth.bjorken_y),
+        # true interaction vertex + neutrino direction (for the reveal arrow):
+        "vertex_x": float(rec.mc_truth.initial_state_x),
+        "vertex_y": float(rec.mc_truth.initial_state_y),
+        "vertex_z": float(rec.mc_truth.initial_state_z),
+        "zenith": float(rec.mc_truth.initial_state_zenith),
+        "azimuth": float(rec.mc_truth.initial_state_azimuth),
+        "first_cascade_x": float(rec.mc_truth.final_state_x[-1]),
+        "first_cascade_y": float(rec.mc_truth.final_state_y[-1]),
+        "first_cascade_z": float(rec.mc_truth.final_state_z[-1]),
+        "second_cascade_x": float(rec.mc_truth.final_state_x[1]),
+        "second_cascade_y": float(rec.mc_truth.final_state_y[1]),
+        "second_cascade_z": float(rec.mc_truth.final_state_z[1]),
     }
 
     geo_arr = None
@@ -388,7 +481,7 @@ def plot_event_display(hits, ax=None, title=None, geo=None, max_dots=4000,
                    alpha=0.25, depthshade=False)
 
     # marker size ~ sqrt(charge) so a few huge modules don't swamp the rest
-    size = 8 + 80 * np.sqrt(q / (q.max() + 1e-9))
+    size = 10*q**(1./3.)
     if color_by == "npe":
         c, cmap, clabel = q, "viridis", "photons per module (NPE proxy)"
     else:
@@ -400,6 +493,75 @@ def plot_event_display(hits, ax=None, title=None, geo=None, max_dots=4000,
     ax.set_xlabel("x [m]")
     ax.set_ylabel("y [m]")
     ax.set_zlabel("z [m]")
+    ax.set_xlim(-500,500)
+    ax.set_ylim(-500,500)
+    ax.set_zlim(-2500,-1500)
     if title:
         ax.set_title(title)
     return ax
+
+
+def direction_unit_vector(zenith, azimuth):
+    """Unit vector of the incoming neutrino from (zenith, azimuth), radians.
+
+    Prometheus stores the direction the particle *comes from*; the momentum points
+    the opposite way, which is what we draw as the travel arrow."""
+    sz = np.sin(zenith)
+    return -np.array([sz * np.cos(azimuth), sz * np.sin(azimuth), np.cos(zenith)])
+
+
+def add_truth_overlay(ax, info, length=120.0, show_cascades=True):
+    """Overlay the MC-truth interaction vertex + travel-direction arrow on a display.
+
+    Drops a star at the interaction vertex and draws an arrow along the lepton's
+    travel direction (opposite the stored incoming direction). For a tau double-bang
+    the two cascade points are starred too. Used by the formalised tau display and by
+    the "guess the event" reveal button."""
+    vx, vy, vz = info["vertex_x"], info["vertex_y"], info["vertex_z"]
+    d = direction_unit_vector(info["zenith"], info["azimuth"])
+    ax.scatter([vx], [vy], [vz], marker="*", s=320, c="red",
+               edgecolor="k", depthshade=False, label="interaction vertex", zorder=6)
+    ax.quiver(vx, vy, vz, d[0], d[1], d[2], length=length, color="red",
+              linewidth=2, arrow_length_ratio=0.3)
+    if show_cascades:
+        ax.scatter([info["first_cascade_x"], info["second_cascade_x"]],
+                   [info["first_cascade_y"], info["second_cascade_y"]],
+                   [info["first_cascade_z"], info["second_cascade_z"]],
+                   marker="*", s=160, c="magenta", edgecolor="k",
+                   depthshade=False, zorder=6)
+    return ax
+
+
+def dom_waveforms(path, event, n_brightest=12):
+    """Per-DOM photon arrival-time arrays for the brightest modules in one event.
+
+    Groups the event's photons by module ``(string_id, sensor_id)`` and returns the
+    ``n_brightest`` modules (most photons first). This is the waveform each optical
+    module records -- a tau double-bang shows two arrival-time clusters (one per
+    cascade) on modules between the bangs.
+
+    Returns a list of dicts ``{string_id, sensor_id, n_photons, times}`` sorted by
+    photon count, descending.
+    """
+    import awkward as ak  # noqa: PLC0415
+
+    rec = _load_arr(path)[int(event)]
+    sid = ak.to_numpy(rec.photons.string_id).astype(np.int64)
+    did = ak.to_numpy(rec.photons.sensor_id).astype(np.int64)
+    tt = ak.to_numpy(rec.photons.t).astype(float)
+
+    key = sid * 100000 + did
+    _, inv = np.unique(key, return_inverse=True)
+    counts = np.bincount(inv)
+    order = np.argsort(counts)[::-1][:n_brightest]
+
+    out = []
+    for m in order:
+        sel = inv == m
+        out.append({
+            "string_id": int(sid[sel][0]),
+            "sensor_id": int(did[sel][0]),
+            "n_photons": int(counts[m]),
+            "times": tt[sel],
+        })
+    return out
