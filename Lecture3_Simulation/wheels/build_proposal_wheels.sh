@@ -34,9 +34,14 @@ tar -xzf "$WORK"/proposal-*.tar.gz -C "$WORK"
 SRC="$(echo "$WORK"/proposal-*/)"
 
 # Build manylinux wheels for the two CPython versions Colab may run.
-CIBW_BUILD="cp311-manylinux_x86_64 cp312-manylinux_x86_64" \
-CIBW_ARCHS_LINUX="x86_64" \
-  python -m cibuildwheel --platform linux --output-dir "$HERE" "$SRC"
+# cibuildwheel (linux) bind-mounts its WORKING DIRECTORY into the manylinux
+# container, so the package source must live INSIDE the cwd. We therefore run it
+# from within the unpacked sdist (package_dir defaults to ".") and send the
+# finished wheels back to this wheels/ dir via --output-dir.
+( cd "$SRC" && \
+  CIBW_BUILD="cp311-manylinux_x86_64 cp312-manylinux_x86_64" \
+  CIBW_ARCHS_LINUX="x86_64" \
+  python -m cibuildwheel --platform linux --output-dir "$HERE" )
 
 echo
 echo "Built wheels in: $HERE"
