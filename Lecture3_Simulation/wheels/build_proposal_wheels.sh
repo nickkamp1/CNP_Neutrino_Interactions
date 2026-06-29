@@ -33,13 +33,18 @@ python -m pip download "proposal==${PROPOSAL_VERSION}" --no-binary :all: --no-de
 tar -xzf "$WORK"/proposal-*.tar.gz -C "$WORK"
 SRC="$(echo "$WORK"/proposal-*/)"
 
-# PROPOSAL's binding CMake over-requests Python's full `Development` component, which
-# expands to Development.Embed -> needs a shared libpython that manylinux Pythons do
-# NOT ship, so cmake reports "Could NOT find Python". A pybind11 extension only needs
-# Development.Module (headers, no libpython to link). Patch the find_package() calls
-# (src/pyPROPOSAL/CMakeLists.txt and any others) before cibuildwheel mounts the source.
+# PROPOSAL's binding CMake needs two manylinux-friendliness fixes (both stem from
+# manylinux Pythons NOT shipping a shared libpython, so the Development.Embed
+# component / Python::Python target can't be satisfied):
+#   (1) find_package(Python ... Development) pulls in Development.Embed; a pybind11
+#       extension only needs Development.Module (headers, no libpython link).
+#   (2) pybind11_add_module(pyPROPOSAL SHARED ...) builds a SHARED lib, which links
+#       Python::Python (embed) and again demands Development.Embed. A Python extension
+#       should be a MODULE; dropping SHARED links Python::Module instead.
 grep -rl 'Interpreter Development REQUIRED' "$SRC" \
   | xargs -r sed -i 's/Interpreter Development REQUIRED/Interpreter Development.Module REQUIRED/'
+sed -i 's/pybind11_add_module(pyPROPOSAL SHARED/pybind11_add_module(pyPROPOSAL/' \
+    "$SRC/src/pyPROPOSAL/CMakeLists.txt"
 
 # Build manylinux wheels for the two CPython versions Colab may run.
 # cibuildwheel (linux) bind-mounts its WORKING DIRECTORY into the manylinux
