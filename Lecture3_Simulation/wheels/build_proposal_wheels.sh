@@ -42,11 +42,13 @@ SRC="$(echo "$WORK"/proposal-*/)"
 # Image: PROPOSAL pulls boost via conan, and conan's prebuilt `b2` binary needs
 # GLIBC up to 2.34 -- too new for the default manylinux2014 (glibc 2.17) and even
 # manylinux_2_28. So build in manylinux_2_34 (glibc 2.34); the wheel still installs
-# on Colab (glibc 2.35). Override CIBW_MANYLINUX_X86_64_IMAGE to change it.
+# on Colab (glibc 2.35). We pass the FULLY-QUALIFIED image (the short
+# "manylinux_2_34" alias isn't resolved by older cibuildwheel and podman then tries
+# to pull docker.io/library/manylinux_2_34, which 404s). Override to change it.
 ( cd "$SRC" && \
   CIBW_BUILD="cp311-manylinux_x86_64 cp312-manylinux_x86_64" \
   CIBW_ARCHS_LINUX="x86_64" \
-  CIBW_MANYLINUX_X86_64_IMAGE="${CIBW_MANYLINUX_X86_64_IMAGE:-manylinux_2_34}" \
+  CIBW_MANYLINUX_X86_64_IMAGE="${CIBW_MANYLINUX_X86_64_IMAGE:-quay.io/pypa/manylinux_2_34_x86_64}" \
   python -m cibuildwheel --platform linux --output-dir "$HERE" )
 
 echo
