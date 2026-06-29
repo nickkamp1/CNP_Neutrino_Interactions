@@ -16,8 +16,8 @@
 #   bash build_proposal_wheels.sh            # builds into ./  (this wheels/ dir)
 #
 # After it finishes you should have, e.g.:
-#   proposal-7.6.2-cp311-cp311-manylinux_2_28_x86_64.whl
-#   proposal-7.6.2-cp312-cp312-manylinux_2_28_x86_64.whl
+#   proposal-7.6.2-cp311-cp311-manylinux_2_34_x86_64.whl
+#   proposal-7.6.2-cp312-cp312-manylinux_2_34_x86_64.whl
 #
 set -euo pipefail
 
@@ -38,9 +38,15 @@ SRC="$(echo "$WORK"/proposal-*/)"
 # container, so the package source must live INSIDE the cwd. We therefore run it
 # from within the unpacked sdist (package_dir defaults to ".") and send the
 # finished wheels back to this wheels/ dir via --output-dir.
+#
+# Image: PROPOSAL pulls boost via conan, and conan's prebuilt `b2` binary needs
+# GLIBC up to 2.34 -- too new for the default manylinux2014 (glibc 2.17) and even
+# manylinux_2_28. So build in manylinux_2_34 (glibc 2.34); the wheel still installs
+# on Colab (glibc 2.35). Override CIBW_MANYLINUX_X86_64_IMAGE to change it.
 ( cd "$SRC" && \
   CIBW_BUILD="cp311-manylinux_x86_64 cp312-manylinux_x86_64" \
   CIBW_ARCHS_LINUX="x86_64" \
+  CIBW_MANYLINUX_X86_64_IMAGE="${CIBW_MANYLINUX_X86_64_IMAGE:-manylinux_2_34}" \
   python -m cibuildwheel --platform linux --output-dir "$HERE" )
 
 echo
